@@ -1,6 +1,7 @@
 """torch-obb: High-performance oriented bounding box intersection operations for PyTorch."""
 
 from .intersection import obb_intersection_volumes, obb_overlaps, obb_ious
+from .estimation import obb_estimate
 
 # Import version from setuptools-scm generated file
 try:
@@ -12,4 +13,5 @@ except ImportError:  # pragma: no cover
 __author__ = "Felix Igelbrink"
 __email__ = "felix.igelbrink@gmail.com"
 __license__ = "MIT"
-__all__ = ["obb_intersection_volumes", "obb_overlaps", "obb_ious", "__version__", "__author__", "__email__", "__license__"]
+__all__ = ["obb_intersection_volumes", "obb_overlaps", "obb_ious", "obb_estimate",
+           "__version__", "__author__", "__email__", "__license__"]

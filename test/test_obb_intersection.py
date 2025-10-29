@@ -5,7 +5,7 @@ try:
 except Exception:  # pragma: no cover - optional
     torch = None  # type: ignore
 
-from torch_obb.intersection_fallback import (
+from torch_obb.intersection_old import (
     obb_intersection_volumes as obb_intersections_np,
     obb_overlaps as obb_overlaps_np,
     obb_ious as obb_ious_np,
