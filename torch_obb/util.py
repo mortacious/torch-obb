@@ -18,6 +18,7 @@ def ensure_warp_available() -> None:
     """Ensure warp is available and raises if not."""
     if wp is None:  # type: ignore
         raise RuntimeError("warp import failed")
+    wp.config.quiet = True
     wp.init()
 
 def ensure_torch_available() -> None:

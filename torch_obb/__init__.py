@@ -1,7 +1,7 @@
 """torch-obb: High-performance oriented bounding box intersection operations for PyTorch."""
 
 from .intersection import obb_intersection_volumes, obb_overlaps, obb_ious
-from .estimation import obb_estimate
+from .estimation import obb_estimate, obb_estimate_pca, obb_estimate_dito
 
 # Import version from setuptools-scm generated file
 try:
