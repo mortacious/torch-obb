@@ -91,14 +91,21 @@ def best_obb_axes_from_base_triangle_kernel(
     p0 = min_tile[furthest_i]
     p1 = max_tile[furthest_i]
 
+    # wp.printf("p0 %f, %f, %f\n", p0[0], p0[1], p0[2])
+    # wp.printf("p1 %f, %f, %f\n", p1[0], p1[1], p1[2])
+    # wp.printf("furthest_index %d\n", furthest_i)
+
+
     diff = p0 - p1
     diff_norm_sq = length_sq(diff)
+    # wp.printf("diff_norm_sq %f\n", diff_norm_sq)
     #case_val = wp.int32(0)
 
     e0 = wp.vec3()
     e1 = wp.vec3()
     e2 = wp.vec3()
 
+    #wp.printf("i %d, testing cases\n", i)
     # Degenerate case 1:
     # If the found furthest points are located very close, return OBB aligned with the initial AABB 
     if diff_norm_sq <= EPSILON:
@@ -107,6 +114,7 @@ def best_obb_axes_from_base_triangle_kernel(
         basis[i, 0] = wp.vec3f(1.0, 0.0, 0.0)
         basis[i, 1] = wp.vec3f(0.0, 1.0, 0.0)
         basis[i, 2] = wp.vec3f(0.0, 0.0, 1.0)
+        #wp.printf("i %d: degenerate case 1\n", i)
         return
     
     diff_norm = wp.sqrt(diff_norm_sq)
@@ -142,8 +150,11 @@ def best_obb_axes_from_base_triangle_kernel(
         v = safe_normalize(wp.cross(e0, r))
         basis[i, 1] = v
         basis[i, 2] = safe_normalize(wp.cross(e0, v))
+        #wp.printf("i %d: degenerate case 2\n", i)
+
         return 
-   
+    
+    #wp.printf("i %d: best_val initial %f\n", i, best_val)
     b0 = wp.vec3f(1.0, 0.0, 0.0)
     b1 = wp.vec3f(0.0, 1.0, 0.0)
     b2 = wp.vec3f(0.0, 0.0, 1.0)
@@ -158,6 +169,10 @@ def best_obb_axes_from_base_triangle_kernel(
     m1 = wp.cross(e1, n_vec)
     m2 = wp.cross(e2, n_vec)
 
+    # wp.printf("i %d: e0 %f, %f, %f\n", i, e0[0], e0[1], e0[2])
+    # wp.printf("i %d: n_vec %f, %f, %f\n", i, n_vec[0], n_vec[1], n_vec[2])
+    # wp.printf("i %d: m0 %f, %f, %f\n", i, m0[0], m0[1], m0[2])
+
     min_e0, max_e0 = find_extremal_projs_one_dir_tiled(selected_tile, e0)
     min_n, max_n = find_extremal_projs_one_dir_tiled(selected_tile, n_vec)
     min_m0, max_m0 = find_extremal_projs_one_dir_tiled(selected_tile, m0)
@@ -166,8 +181,11 @@ def best_obb_axes_from_base_triangle_kernel(
     span_n = max_n - min_n
     span_m0 = max_m0 - min_m0
 
-
+    #wp.printf("dlen span_e0 %f, span_n %f, span_m0 %f\n", span_e0, span_n, span_m0)
     q0 = half_box_area(wp.vec3f(span_e0, span_n, span_m0))
+
+
+   # wp.printf("i %d: q0 %f\n", i, q0)
     #wp.printf("i %d: q0 < best_val %f, %f\n", i, q0, best_val)
 
     if q0 < best_val:
@@ -205,6 +223,8 @@ def best_obb_axes_from_base_triangle_kernel(
         b0 = e2
         b1 = n_vec
         b2 = m2
+
+    #wp.printf("i %d: best_val %f\n", i, best_val)
 
     basis[i, 0] = b0
     basis[i, 1] = b1
@@ -302,6 +322,7 @@ def obb_estimate_dito(vertices_t: torch.Tensor,
     max_vert_wp = wp.from_torch(max_vert_t, dtype=wp.vec3f).to(device_wp)
     selected_vertices_wp = wp.from_torch(selected_vertices_t, dtype=wp.vec3f).to(device_wp)
     basis_wp = wp.zeros((vertices_t.shape[0], 3), dtype=wp.vec3f, device=device_wp)
+
     wp.launch_tiled(best_obb_axes_from_base_triangle_kernel, 
                     dim=[min_vert_t.shape[0]], 
                     inputs=[aabb_min_wp, aabb_max_wp, min_vert_wp, max_vert_wp, 
@@ -310,12 +331,11 @@ def obb_estimate_dito(vertices_t: torch.Tensor,
                     device=device_wp)
 
     basis_t = wp.to_torch(basis_wp)
-
     min_extents_t, max_extents_t = compute_obb_extents_jagged(vertices_t, basis_t)
     extents_t = max_extents_t - min_extents_t
-    centroids_t = (min_extents_t + max_extents_t) * 0.5
-
-    vertices_t = compute_obb_vertices(centroids_t, extents_t, basis_t)
-    return vertices_t
+    center_local_t = (min_extents_t + max_extents_t) * 0.5
+    center_t = torch.bmm(center_local_t.unsqueeze(1), basis_t).squeeze(1)
+    vertices_t = compute_obb_vertices(center_t, extents_t, basis_t.mT)
+    return vertices_t, basis_t
 
 

@@ -42,7 +42,7 @@ def slab_extremas(vertices: np.ndarray):
 
     print(proj.shape)
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def find_extremal_points(vertices):
     """Find extremal points along the 7 slab directions for DITO-14 algorithm."""
     t_min_proj = np.empty(NUM_SLAB_DIRS, dtype=vertices.dtype)
@@ -85,21 +85,21 @@ def find_extremal_points(vertices):
     return t_min_proj, t_max_proj, t_min_vert, t_max_vert
 
 
-@nb.njit(nogil=True, fastmath=True, inline='always')
+#@nb.njit(nogil=True, fastmath=True, inline='always')
 def norm(v: np.ndarray) -> float:
     return np.dot(v, v)
 
-@nb.njit(nogil=True, fastmath=True, inline='always')
+#@nb.njit(nogil=True, fastmath=True, inline='always')
 def normalize(v: np.ndarray) -> np.ndarray:
-    return v / norm(v)
+    return v / np.sqrt(norm(v))
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def quality_value(v: np.ndarray) -> np.ndarray:
     return v[0] * v[1] + v[0] * v[2] + v[1] * v[2] # half box area
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def furthest_point_pair(min_vertices, max_vertices):
     #max_first = min_vertices[0]
     #max_second = max_vertices[0]
@@ -111,18 +111,18 @@ def furthest_point_pair(min_vertices, max_vertices):
             if d > max_dist:
                 furthest_index = i
                 max_dist = d
-
+    print("furthest_index", furthest_index)
     return min_vertices[furthest_index], max_vertices[furthest_index]
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def dist_point_infinite_edge(q, p0, v):
     u0 = q - p0
     t = np.dot(v, u0)
     return norm(u0) - t*t / norm(v)
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def furthest_point_infinite_edge(p0, e0, vertices):
     max_dist = dist_point_infinite_edge(vertices[0], p0, e0)
     max_index = 0
@@ -136,7 +136,7 @@ def furthest_point_infinite_edge(p0, e0, vertices):
     return max_dist, vertices[max_index]
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def find_extremal_projs_one_dir(vertices, normal):
     proj = np.dot(vertices[0], normal)
     t_min_proj = proj
@@ -150,7 +150,7 @@ def find_extremal_projs_one_dir(vertices, normal):
     return t_min_proj, t_max_proj
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def best_obb_axes_from_triangle_normal_and_edge(vertices, e ,n ,b , bestval):
     m0 = np.cross(e[0], n)
     m1 = np.cross(e[1], n)
@@ -160,6 +160,10 @@ def best_obb_axes_from_triangle_normal_and_edge(vertices, e ,n ,b , bestval):
     dmax = np.zeros(3, dtype=vertices.dtype) 
     dmin = np.zeros(3, dtype=vertices.dtype) 
     dlen = np.zeros(3, dtype=vertices.dtype)
+
+    print("e0", e[0])
+    print("n", n)
+    print("m0", m0)
 
     min_proj, max_proj = find_extremal_projs_one_dir(vertices, n)
     dmin[1] = min_proj
@@ -177,8 +181,10 @@ def best_obb_axes_from_triangle_normal_and_edge(vertices, e ,n ,b , bestval):
     dmax[2] = max_proj
     dlen[2] = max_proj - min_proj     
 
+    print("dlen0", dlen)
     quality = quality_value(dlen)
 
+    print("quality0", quality)
     if quality < bestval:
         bestval = quality
         b[0] = e[0]
@@ -225,42 +231,46 @@ def best_obb_axes_from_triangle_normal_and_edge(vertices, e ,n ,b , bestval):
  
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def best_obb_axes_from_base_triangle(min_vertices, max_vertices, vertices, e, n, b, bestval):
     p0, p1 = furthest_point_pair(min_vertices, max_vertices)
-
+    print("p0", p0)
+    print("p1", p1)
     diff = p0 - p1
     diff_norm = norm(diff)
-
+    print("diff_norm", diff_norm)
     # Degenerate case 1:
     # If the found furthest points are located very close, return OBB aligned with the initial AABB 
     if diff_norm < epsilon:
+        print("degenerate case 1")
         return 1, bestval
     
-    e[0] = diff / diff_norm
+    e[0] = diff / np.sqrt(diff_norm)
 
     dist, p2 = furthest_point_infinite_edge(p0, e[0], vertices)
-
 	# Degenerate case 2:
 	# If the third point is located very close to the line, return an OBB aligned with the line 
     if dist < epsilon: 
+        print("degenerate case 2")
         return 2, bestval
     
     # Compute the two remaining edge vectors and the normal vector of the base triangle
     e[1] = normalize(p1 - p2)
     e[2] = normalize(p2 - p0)
     n[:] = normalize(np.cross(e[1], e[0]))
-
+    print("bestval initial", bestval)
     bestval = best_obb_axes_from_triangle_normal_and_edge(vertices, e, n, b, bestval)
 
+    print("bestval", bestval)
     return 0, bestval
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def finalize_obb(v0, v1, v2, bmin, bmax, blen):
     q = (bmin + bmax) * 0.5
+    print("q", q)
     center = v0 * q[0] + v1 * q[1] + v2 * q[2]
-
+    print("center", center)
     vertices = AABB_VERTICES
     vertices = vertices - 0.5
     vertices = vertices * blen
@@ -272,7 +282,7 @@ def finalize_obb(v0, v1, v2, bmin, bmax, blen):
     return result
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def finalize_axis_aligned_obb(center, extent):
     vertices = AABB_VERTICES - 0.5
     vertices = vertices * extent
@@ -281,7 +291,7 @@ def finalize_axis_aligned_obb(center, extent):
     return vertices
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def compute_obb_dimensions(vertices, v0, v1, v2):
     bmin = np.empty(3, dtype=vertices.dtype)
     bmax = np.empty(3, dtype=vertices.dtype)
@@ -301,7 +311,7 @@ def compute_obb_dimensions(vertices, v0, v1, v2):
     return bmin, bmax
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def finalize_line_aligned_obb(u, vertices):
     # This function is only called if the construction of the large base triangle fails
 
@@ -326,7 +336,9 @@ def finalize_line_aligned_obb(u, vertices):
     # compute the true obb dimensions by iterating over all vertices
 
     bmin, bmax = compute_obb_dimensions(vertices, u, v, w)
+    
     blen = bmax - bmin
+    print("blen", blen)
     return finalize_obb(u, v, w, bmin, bmax, blen)
 
 
@@ -334,7 +346,7 @@ def find_improved_obb_axes_from_upper_and_lower_tetras_of_basetriangle(vertices,
     pass
 
 
-@nb.njit(nogil=True, fastmath=True, cache=True)
+#@nb.njit(nogil=True, fastmath=True, cache=True)
 def oriented_bounding_box_dito_14(vertices: np.ndarray) -> np.ndarray:
     """Compute oriented bounding box using the DITO-14 algorithm."""
 
@@ -347,7 +359,6 @@ def oriented_bounding_box_dito_14(vertices: np.ndarray) -> np.ndarray:
     b = np.empty((3, 3), dtype=np.float32) # The best currently found obb orientation
 
     min_projections, max_projections, min_vertices, max_vertices = find_extremal_points(vertices)
-
     aabb_center = (min_projections[:3] + max_projections[:3]) * 0.5 # axis-aligned center point of the vertices
     aabb_extent = max_projections[:3] - min_projections[:3] # axis-aligned extents of the vertices
     # Ensure consistent types
@@ -367,8 +378,12 @@ def oriented_bounding_box_dito_14(vertices: np.ndarray) -> np.ndarray:
     else:
         selected_vertices = np.concatenate((min_vertices, max_vertices), axis=0) # use the selected extreme points
 
-    base_triangle_constraint, best_value = best_obb_axes_from_base_triangle(min_vertices, max_vertices, vertices, e, n, b, best_value)
+    print("selected_vertices", selected_vertices)
 
+
+    base_triangle_constraint, best_value = best_obb_axes_from_base_triangle(min_vertices, max_vertices, selected_vertices, e, n, b, best_value)
+
+    print("basis", b, base_triangle_constraint)
     if base_triangle_constraint == 1:
         return finalize_axis_aligned_obb(aabb_center, aabb_extent)
     elif base_triangle_constraint == 2:
@@ -380,4 +395,7 @@ def oriented_bounding_box_dito_14(vertices: np.ndarray) -> np.ndarray:
     # For now, compute the final OBB using the best orientation found
     bmin, bmax = compute_obb_dimensions(vertices, b[0], b[1], b[2])
     blen = bmax - bmin
+    print("bmin", bmin)
+    print("bmax", bmax)
+    print("blen", blen)
     return finalize_obb(b[0], b[1], b[2], bmin, bmax, blen)
