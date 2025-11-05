@@ -354,7 +354,7 @@ def compute_obb_extents_jagged(vertices_jagged: torch.Tensor, basis: torch.Tenso
 
 
 def obb_estimate_dito(vertices_t: torch.Tensor,
-                      device: Optional[str] = None) -> torch.Tensor:
+                      device: Optional[str] = None) -> Tuple[torch.Tensor, torch.Tensor]:
     ensure_warp_available()
     if device is None:
         device = vertices_t.device

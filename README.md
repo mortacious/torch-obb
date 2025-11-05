@@ -1,37 +1,29 @@
 # torch-obb
 
-A high-performance PyTorch package for oriented bounding box (OBB) intersection operations, powered by [Warp](https://github.com/NVIDIA/warp).
+A PyTorch package for batched oriented bounding box (OBB) operations, powered by [Warp](https://github.com/NVIDIA/warp). 
 
 ## Features
+Currently torch-obb provides the following features:
 
-- **High Performance**: CUDA-accelerated OBB intersection computations using Warp
-- **Fallback Implementation**: NumPy/Numba fallback for CPU-only environments
-- **PyTorch Integration**: Native PyTorch tensor support with automatic device inference
-- **Batch Processing**: Efficient batch processing of multiple OBB pairs
-- **Multiple Operations**:
-  - Intersection volumes computation
-  - Directional overlap ratios
-  - Intersection over Union (IoU) calculation
+- **OBB Estimation**: Compute oriented bounding boxes from jagged batches of point clouds using PCA or DITO-14 algorithms
+- **OBB Intersection**: Compute the intersection volumes as well as overlap percentages and IOUs for batches of OBBs
+- **Warp Implementation**: Uses CUDA kernels for maximum performance on GPU
+- **Automatic Selection**: The package automatically uses the most appropriate implementation depending on the input device of the provided tensors
+- **Batch Processing**: All functions support efficient batch processing of multiple OBB or point cloud pairs
 
 ## Installation
 
 ### Requirements
 
-- Python 3.8+
+- Python 3.9+
 - CUDA-capable GPU (for best performance)
-- Required dependencies: `numpy`, `warp-lang`, `numba`
-- Optional: `torch` (for PyTorch tensor support)
-
-### Install from PyPI
-
-```bash
-pip install torch-obb
-```
+- Required dependencies: `numpy`, `torch`, `warp-lang`
+- Optional: `pytest` (for development)
 
 ### Install from source
 
 ```bash
-git clone https://github.com/yourusername/torch-obb.git
+git clone https://github.com/your-username/torch-obb.git
 cd torch-obb
 pip install .
 ```
@@ -43,6 +35,8 @@ pip install -e ".[dev]"
 ```
 
 ## Quick Start
+
+### OBB Intersection
 
 ```python
 import torch
@@ -67,57 +61,47 @@ print(f"Intersection volumes: {intersection_volumes}")
 print(f"IoU: {iou}")
 ```
 
-## API Reference
+## OBB Estimation
 
-### Main Functions
+```python
+import torch
+import numpy as np
+from torch_obb import obb_estimate, obb_estimate_pca, obb_estimate_dito
 
-#### `obb_intersection_volumes(obb_first, obb_second, pairwise=False, device=None)`
+# Example point cloud (random 3D points forming an elongated shape)
+np.random.seed(42)
+points = np.random.randn(1000, 3).astype(np.float32)
+points = points * np.array([2.0, 1.0, 0.5])  # Elongate in x-direction
 
-Compute volumes and intersection volumes between two sets of oriented bounding boxes.
+# Convert to PyTorch nested tensor for batch processing
+points_tensor = torch.nested.as_nested_tensor([torch.from_numpy(points)], layout=torch.jagged)
 
-**Parameters:**
-- `obb_first`: Array of OBBs with shape `(N, 8, 3)` or `(8, 3)`
-- `obb_second`: Array of OBBs with shape `(M, 8, 3)` or `(8, 3)`
-- `pairwise`: If `True`, compute pairwise intersections (N×M)
-- `device`: Target device for computation (auto-inferred if using PyTorch tensors)
+# Estimate OBB using PCA (default method)
+obb_vertices = obb_estimate(points_tensor)
+print(f"OBB vertices shape: {obb_vertices.shape}")  # (1, 8, 3)
 
-**Returns:**
-- `volumes1`: Volumes of first set of OBBs
-- `volumes2`: Volumes of second set of OBBs
-- `intersection_volumes`: Intersection volumes between OBB pairs
+# Get both vertices and rotation matrix using PCA
+obb_vertices_pca, rotation_matrix = obb_estimate_pca(points_tensor)
+print(f"Rotation matrix shape: {rotation_matrix.shape}")  # (1, 3, 3)
 
-#### `obb_overlaps(obb_first, obb_second, pairwise=False, device=None)`
+# Use DITO algorithm
+obb_vertices_dito, rotation_matrix = obb_estimate_dito(points_tensor)
 
-Compute directional overlap ratios between oriented bounding boxes.
+# Batch processing multiple point clouds
+batch_points = torch.nested.as_nested_tensor([
+    torch.from_numpy(points),
+    torch.from_numpy(points * 0.5),  # Smaller version
+    torch.from_numpy(points + np.array([5.0, 0.0, 0.0]))  # Offset version
+], layout=torch.jagged)
 
-**Parameters:**
-- `obb_first`: Array of OBBs with shape `(N, 8, 3)` or `(8, 3)`
-- `obb_second`: Array of OBBs with shape `(M, 8, 3)` or `(8, 3)`
-- `pairwise`: If `True`, compute pairwise overlaps (N×M)
-- `device`: Target device for computation (auto-inferred if using PyTorch tensors)
-
-**Returns:**
-- `overlap1`: Overlap ratios of first OBBs over second OBBs
-- `overlap2`: Overlap ratios of second OBBs over first OBBs
-
-#### `obb_ious(obb_first, obb_second, pairwise=False, device=None)`
-
-Compute Intersection over Union (IoU) between oriented bounding boxes.
-
-**Parameters:**
-- `obb_first`: Array of OBBs with shape `(N, 8, 3)` or `(8, 3)`
-- `obb_second`: Array of OBBs with shape `(M, 8, 3)` or `(8, 3)`
-- `pairwise`: If `True`, compute pairwise IoUs (N×M)
-- `device`: Target device for computation (auto-inferred if using PyTorch tensors)
-
-**Returns:**
-- `iou`: IoU values between OBB pairs
-
+batch_obbs = obb_estimate(batch_points)
+print(f"Batch OBBs shape: {batch_obbs.shape}")  # (3, 8, 3)
+```
 ## Input Format
 
 OBB vertices should be provided as arrays of shape `(N, 8, 3)` or `(8, 3)` where:
 - `N`: Number of oriented bounding boxes
-- `8`: Number of corner vertices per box
+- `8`: Corner vertices per box
 - `3`: XYZ coordinates
 
 The vertices should follow this specific order:
@@ -125,44 +109,13 @@ The vertices should follow this specific order:
 [0,1,3,2], [0,4,5,1], [0,2,6,4], [1,5,7,3], [2,3,7,6], [4,6,7,5]
 ```
 
-Use the provided `make_obb()` helper function from the test suite to create properly formatted OBBs.
-
-## Performance Notes
-
-- **Warp Implementation**: Uses CUDA kernels for maximum performance on GPU
-- **Fallback Implementation**: NumPy/Numba implementation for CPU-only environments
-- **Automatic Selection**: The package automatically uses the most appropriate implementation
-- **Batch Processing**: All functions support efficient batch processing of multiple OBB pairs
-
 ## Requirements and Compatibility
 
 - **CUDA**: Required for Warp-based GPU acceleration
-- **PyTorch**: Optional, enables seamless tensor integration
-- **Python**: 3.8+ supported
-- **NumPy**: 1.20+ required
-- **Warp**: 0.10+ required
-
-## Contributing
-
-Contributions are welcome! Please see the [GitHub repository](https://github.com/yourusername/torch-obb) for:
-
-- Bug reports and feature requests
-- Pull request guidelines
-- Development setup instructions
+- **PyTorch**: 2.0+ required for tensor operations
+- **Python**: 3.9+ supported
+- **Warp**: 1.10.0+ required
 
 ## License
 
 MIT License - see LICENSE file for details.
-
-## Citation
-
-If you use this package in your research, please cite:
-
-```bibtex
-@software{torch_obb,
-  title={torch-obb: High-Performance OBB Intersection for PyTorch},
-  author={torch-obb contributors},
-  url={https://github.com/yourusername/torch-obb},
-  version={0.1.0}
-}
-```
