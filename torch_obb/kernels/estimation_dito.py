@@ -1,3 +1,10 @@
+
+# This implementation is based on the OBB estimation algorithm described in
+# Fast Computation of Tight‐Fitting Oriented Bounding Boxes
+# by Thomas Larsson and Linus Källberg
+# in "Game Engine Gems 2" by Eric Lengyel, Chapter 1
+# and related sections on oriented bounding box computation.
+
 import warp as wp
 import torch
 from typing import Optional, Any, Tuple
