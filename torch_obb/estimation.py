@@ -1,7 +1,7 @@
 from __future__ import annotations
 import torch
 
-from .typing import Tensor, Optional
+from .typing import Tensor, Optional, Tuple
 from .kernels.estimation_utils import compute_obb_vertices
 
 
@@ -24,7 +24,7 @@ def obb_estimate_pca(
     batch_offsets: Optional[Tensor] = None,
     epsilon: float = 1e-9,
     device: Optional[str] = None,
-) -> Tensor:
+) -> Tuple[Tensor, Tensor]:
     # pca implementation is done using pure torch operations as torch has support for nested tensors builtin
     vertices_t, device = prepare_vertices(vertices, batch_offsets, device)
 
@@ -69,7 +69,7 @@ def obb_estimate_pca(
 
 def obb_estimate_dito(vertices: Tensor, 
                       batch_offsets: Optional[Tensor] = None,
-                      device: Optional[str] = None) -> Tensor:
+                      device: Optional[str] = None) -> Tuple[Tensor, Tensor]:
     from .kernels.estimation_dito import obb_estimate_dito as obb_estimate_dito_impl
     vertices_t, device = prepare_vertices(vertices, batch_offsets, device)
     return obb_estimate_dito_impl(vertices_t, device)
@@ -80,6 +80,7 @@ def obb_estimate(
     batch_offsets: Optional[Tensor] = None,
     device: Optional[str] = None,
     method: str = "pca",
+    return_basis: bool = False,
 ) -> Tensor:
     """Compute oriented bounding box using the DITO-14 algorithm on GPU/CPU via Warp.
 
@@ -98,15 +99,18 @@ def obb_estimate(
     vertices_t, device = prepare_vertices(vertices, batch_offsets, device)
 
     if method == "pca":
-        obb_vertices = obb_estimate_pca(vertices_t, device=device)
+        obb_vertices, basis = obb_estimate_pca(vertices_t, device=device)
     elif method == "dito":    
-        obb_vertices = obb_estimate_dito(vertices, device=device)
+        obb_vertices, basis = obb_estimate_dito(vertices, device=device)
     else:
         raise ValueError(f"Invalid method: {method}")
         
     if not isinstance(vertices, torch.Tensor):
         obb_vertices = obb_vertices.cpu().numpy()
-    return obb_vertices.reshape(-1, 8, 3)
+    if return_basis:
+        return obb_vertices.reshape(-1, 8, 3), basis
+    else:
+        return obb_vertices.reshape(-1, 8, 3)
 
 
 
