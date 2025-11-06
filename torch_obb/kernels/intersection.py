@@ -633,6 +633,8 @@ def obb_intersection_volumes(
     if device is None:
         device = infer_device(obb_first, obb_second)
 
+    stream_wp = wp.stream_from_torch(device)
+
     obb_first_wp = to_wp_array(obb_first, wp.vec3, device=device)
     obb_second_wp = to_wp_array(obb_second, wp.vec3, device=device)
 
@@ -644,32 +646,48 @@ def obb_intersection_volumes(
 
     # preprocessing
     tri_vertices_first_wp = wp.zeros((N, len(_TRIS), 3), dtype=wp.vec3, device=device)
-    wp.launch(triangle_vertices_kernel, dim=N, inputs=[obb_first_wp, tri_vertices_first_wp], device=device)
+    wp.launch(triangle_vertices_kernel, dim=N, 
+              inputs=[obb_first_wp, tri_vertices_first_wp], 
+              device=device, stream=stream_wp)
 
     tri_vertices_second_wp = wp.zeros((M, len(_TRIS), 3), dtype=wp.vec3, device=device)
-    wp.launch(triangle_vertices_kernel, dim=M, inputs=[obb_second_wp, tri_vertices_second_wp], device=device)
+    wp.launch(triangle_vertices_kernel, dim=M, 
+              inputs=[obb_second_wp, tri_vertices_second_wp], 
+              device=device, stream=stream_wp)
 
     obb_centers_first_wp = wp.empty(N, dtype=wp.vec3, device=device)
     obb_radii_first_wp = wp.empty(N, dtype=wp.float32, device=device)
-    wp.launch(centers_radii_kernel, dim=N, inputs=[obb_first_wp, obb_centers_first_wp, obb_radii_first_wp], device=device)
+    wp.launch(centers_radii_kernel, dim=N, 
+              inputs=[obb_first_wp, obb_centers_first_wp, obb_radii_first_wp], 
+              device=device, stream=stream_wp)
 
     obb_centers_second_wp = wp.empty(M, dtype=wp.vec3, device=device)
     obb_radii_second_wp = wp.empty(M, dtype=wp.float32, device=device)
-    wp.launch(centers_radii_kernel, dim=M, inputs=[obb_second_wp, obb_centers_second_wp, obb_radii_second_wp], device=device)
+    wp.launch(centers_radii_kernel, dim=M, 
+              inputs=[obb_second_wp, obb_centers_second_wp, obb_radii_second_wp], 
+              device=device, stream=stream_wp)
 
     plane_centers_first_wp = wp.empty((N, _NUM_PLANES), dtype=wp.vec3, device=device)
     plane_normals_first_wp = wp.empty((N, _NUM_PLANES), dtype=wp.vec3, device=device)
-    wp.launch(planes_kernel, dim=N, inputs=[obb_first_wp, obb_centers_first_wp, plane_centers_first_wp, plane_normals_first_wp], device=device)
+    wp.launch(planes_kernel, dim=N, 
+              inputs=[obb_first_wp, obb_centers_first_wp, plane_centers_first_wp, plane_normals_first_wp], 
+              device=device, stream=stream_wp)
 
     plane_centers_second_wp = wp.empty((M, _NUM_PLANES), dtype=wp.vec3, device=device)
     plane_normals_second_wp = wp.empty((M, _NUM_PLANES), dtype=wp.vec3, device=device)
-    wp.launch(planes_kernel, dim=M, inputs=[obb_second_wp, obb_centers_second_wp, plane_centers_second_wp, plane_normals_second_wp], device=device)
+    wp.launch(planes_kernel, dim=M, 
+              inputs=[obb_second_wp, obb_centers_second_wp, plane_centers_second_wp, plane_normals_second_wp],
+              device=device, stream=stream_wp)
 
     box_volumes_first_wp = wp.empty((N,), dtype=wp.float32, device=device)
-    wp.launch(box_volumes_kernel, dim=N, inputs=[tri_vertices_first_wp, obb_centers_first_wp, box_volumes_first_wp], device=device)
+    wp.launch(box_volumes_kernel, dim=N, 
+              inputs=[tri_vertices_first_wp, obb_centers_first_wp, box_volumes_first_wp], 
+              device=device, stream=stream_wp)
 
     box_volumes_second_wp = wp.empty((M,), dtype=wp.float32, device=device)
-    wp.launch(box_volumes_kernel, dim=M, inputs=[tri_vertices_second_wp, obb_centers_second_wp, box_volumes_second_wp], device=device)
+    wp.launch(box_volumes_kernel, dim=M, 
+              inputs=[tri_vertices_second_wp, obb_centers_second_wp, box_volumes_second_wp], 
+              device=device, stream=stream_wp)
 
     # Intersections
     if pairwise:
@@ -684,7 +702,7 @@ def obb_intersection_volumes(
                                                   plane_normals_second_wp, 
                                                   obb_centers_second_wp, 
                                                   obb_radii_second_wp, 
-                                                  out_wp], device=device)
+                                                  out_wp], device=device, stream=stream_wp)
     else:
         out_wp = wp.empty((N, M), dtype=wp.float32, device=device)
 
@@ -698,7 +716,7 @@ def obb_intersection_volumes(
                                                 plane_normals_second_wp, 
                                                 obb_centers_second_wp, 
                                                 obb_radii_second_wp, 
-                                                out_wp], device=device)
+                                                out_wp], device=device, stream=stream_wp)
     return (
         from_wp_array(box_volumes_first_wp, like=obb_first),
         from_wp_array(box_volumes_second_wp, like=obb_second),

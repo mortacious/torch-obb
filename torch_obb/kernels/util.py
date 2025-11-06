@@ -24,14 +24,14 @@ def infer_device(*tensors: Tensor) -> str | wp.context.Device:
     return "cpu"
 
 
-def to_wp_array(x: Tensor, dtype: wp.types.DType, device: str = "cpu") -> wp.array:
+def to_wp_array(x: Tensor, dtype: wp.types.DType, device: str = "cpu", fastmode: bool = False) -> wp.array:
     """Convert a numpy array or torch tensor to a warp array of specific dtype and device."""
     if torch is not None and isinstance(x, torch.Tensor):
-        return wp.from_torch(x, dtype=dtype)
+        return wp.from_torch(x, dtype=dtype, return_ctype=fastmode)
     else:
         # fallback to numpy
         arr = np.asarray(x)
-        return wp.from_numpy(arr, dtype=dtype, device=device)
+        return wp.from_numpy(arr, dtype=dtype, device=device, return_ctype=fastmode)
 
 
 def from_wp_array(x: wp.array, like: Optional[Tensor] = None) -> Tensor:

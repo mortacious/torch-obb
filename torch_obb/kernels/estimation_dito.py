@@ -330,6 +330,8 @@ def obb_estimate_dito(vertices_t: torch.Tensor) -> torch.Tensor:
     device = vertices_t.device
     device_wp = wp.device_from_torch(device)
 
+    stream_wp = wp.stream_from_torch(device)
+
     #npoints_t = vertices_t.offsets().diff()
     # if (npoints_t < NUM_SLAB_DIRS * 2).any():
     #     raise ValueError(f"Each batch must have at least {NUM_SLAB_DIRS * 2} vertices.")
@@ -369,7 +371,7 @@ def obb_estimate_dito(vertices_t: torch.Tensor) -> torch.Tensor:
     aabb_max_t = max_proj_t[:, :3]
 
     aabb_val_t = half_box_area_torch(aabb_max_t - aabb_min_t)
-    wp.synchronize_device(device_wp)
+    
     aabb_min_wp = wp.from_torch(aabb_min_t, dtype=wp.vec3f).to(device_wp)
     aabb_max_wp = wp.from_torch(aabb_max_t, dtype=wp.vec3f).to(device_wp)
     min_vert_wp = wp.from_torch(min_vert_t, dtype=wp.vec3f).to(device_wp)
@@ -382,8 +384,8 @@ def obb_estimate_dito(vertices_t: torch.Tensor) -> torch.Tensor:
                     inputs=[aabb_min_wp, aabb_max_wp, min_vert_wp, max_vert_wp, 
                             selected_vertices_wp, basis_wp], 
                     block_dim=BLOCK_SIZE,
-                    device=device_wp)
-    wp.synchronize_device(device_wp)
+                    device=device_wp, stream=stream_wp)
+    #wp.synchronize_device(device_wp)
     basis_t = wp.to_torch(basis_wp)
     # project the vertices from world into local space
     min_extents_t, max_extents_t = compute_obb_extents_jagged(vertices_t, basis_t.mT)
