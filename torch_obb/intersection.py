@@ -1,7 +1,6 @@
 from __future__ import annotations
-import warp as wp
 from .kernels.intersection import obb_intersection_volumes as _obb_intersection_volumes_impl
-from .util import check_batch_dim, ensure_warp_available, infer_device, to_wp_array, from_wp_array
+from .obb import obb_vertices
 from .typing import Tensor, Tuple, Optional
 
 # -----------------------------
@@ -33,24 +32,13 @@ def obb_intersection_volumes(
     vol2 : array-like, shape (M,)
     inter : array-like, shape (N, M)
     """
-    ensure_warp_available()
-    # Ensure shape
-    obb_first = check_batch_dim(obb_first, 3)
-    obb_second = check_batch_dim(obb_second, 3)
 
-    # Determine device from inputs if not provided
-    if device is None:
-        device = infer_device(obb_first, obb_second)
+    # Compute the corner vertices of the OBBs for the intersection computation
+    obb_first = obb_vertices(obb_first)
+    obb_second = obb_vertices(obb_second)
 
-    obb_first_wp = to_wp_array(obb_first, wp.vec3, device=device)
-    obb_second_wp = to_wp_array(obb_second, wp.vec3, device=device)
+    return _obb_intersection_volumes_impl(obb_first, obb_second, device, pairwise=pairwise)
 
-    box_volumes_first_wp, box_volumes_second_wp, out_wp = _obb_intersection_volumes_impl(obb_first_wp, obb_second_wp, device, pairwise=pairwise)
-    return (
-            from_wp_array(box_volumes_first_wp, like=obb_first),
-            from_wp_array(box_volumes_second_wp, like=obb_second),
-            from_wp_array(out_wp, like=obb_first),
-        )
 
 def obb_overlaps(
     obb_first,
