@@ -2,6 +2,7 @@
 
 from .intersection import obb_intersection_volumes, obb_overlaps, obb_ious
 from .estimation import obb_estimate, obb_estimate_pca, obb_estimate_dito
+from .obb import obb_vertices, obb_points_intersection
 
 # Import version from setuptools-scm generated file
 try:
@@ -11,7 +12,7 @@ except ImportError:  # pragma: no cover
     __version__ = "0.0.0.dev0"
 
 __author__ = "Felix Igelbrink"
-__email__ = "felix.igelbrink@gmail.com"
+__email__ = "felix.igelbrink@dfki.de"
 __license__ = "MIT"
-__all__ = ["obb_intersection_volumes", "obb_overlaps", "obb_ious", "obb_estimate",
-           "__version__", "__author__", "__email__", "__license__"]
+__all__ = ["obb_intersection_volumes", "obb_overlaps", "obb_ious", "obb_estimate", "obb_estimate_pca", "obb_estimate_dito",
+           "obb_vertices", "obb_points_intersection", "__version__", "__author__", "__email__", "__license__"]

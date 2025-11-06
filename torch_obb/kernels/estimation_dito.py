@@ -1,4 +1,3 @@
-
 # This implementation is based on the OBB estimation algorithm described in
 # Fast Computation of Tight‐Fitting Oriented Bounding Boxes
 # by Thomas Larsson and Linus Källberg
@@ -7,9 +6,9 @@
 
 import warp as wp
 import torch
-from typing import Optional, Any, Tuple
-from ..util import ensure_warp_available
-from .estimation_utils import compute_obb_vertices
+from typing import Any, Tuple
+from .util import ensure_warp_available
+
 
 SLAB_DIRS = torch.tensor([[1,  0,  0],
                           [0,  1,  0],
@@ -18,6 +17,7 @@ SLAB_DIRS = torch.tensor([[1,  0,  0],
                           [1,  1, -1],
                           [1, -1,  1],
                           [1, -1, -1]], dtype=torch.float32, device=torch.device('cpu'))
+
 NUM_SLAB_DIRS = SLAB_DIRS.shape[0]
 NUM_SELECTED_VERTICES = NUM_SLAB_DIRS * 2
 BLOCK_SIZE = 32
@@ -316,43 +316,8 @@ def dito_kernel(
     return
 
 
-@wp.kernel(enable_backward=False)
-def projections_kernel(vertices: wp.array(dtype=wp.vec3f, ndim=1), 
-                       batch_indices: wp.array(dtype=wp.int32, ndim=1), 
-                       basis: wp.array(dtype=wp.vec3f, ndim=2),
-                       projections_out: wp.array(dtype=float, ndim=2)):
-    i = wp.tid()
-    b = batch_indices[i]
-    basis = basis[b]
-    v = vertices[i]
-
-    for j in range(3):
-        p = wp.dot(v, basis[j])
-        projections_out[i, j] = p
-
-
-def jagged_batch_indices(nested: torch.Tensor) -> torch.Tensor:
-    """Construct the batch indices for the given nested Tensor as a Tensor if one integer index for each element along the jagged axis.
-    """
-    batch = torch.arange(nested.size(0), dtype=torch.int32, device=nested.device)
-    return batch.repeat_interleave(nested.offsets().diff().to(batch.device))
-
-
 def compute_obb_extents_jagged(vertices_jagged: torch.Tensor, basis: torch.Tensor) -> torch.Tensor:
-    vertices_wp = wp.from_torch(vertices_jagged.values(), dtype=wp.vec3f)
-    device = vertices_wp.device
-    batch_indices = jagged_batch_indices(vertices_jagged)
-    batch_indices_wp = wp.from_torch(batch_indices, dtype=wp.int32)
-    basis_wp = wp.from_torch(basis, dtype=wp.vec3f)
-    
-    projections_wp = wp.zeros((vertices_wp.shape[0], 3), dtype=wp.float32, device=device)
-
-    wp.launch(projections_kernel, 
-              dim=vertices_wp.shape[0], 
-              inputs=[vertices_wp, batch_indices_wp, basis_wp, projections_wp], 
-              device=device)
-
-    projections_t_jagged = torch.nested.nested_tensor_from_jagged(wp.to_torch(projections_wp), offsets=vertices_jagged.offsets())
+    projections_t_jagged = torch.bmm(vertices_jagged, basis)
     
     min_extents = torch.min(projections_t_jagged, dim=1).values
     max_extents = torch.max(projections_t_jagged, dim=1).values
@@ -360,15 +325,14 @@ def compute_obb_extents_jagged(vertices_jagged: torch.Tensor, basis: torch.Tenso
     return min_extents, max_extents
 
 
-def obb_estimate_dito(vertices_t: torch.Tensor,
-                      device: Optional[str] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+def obb_estimate_dito(vertices_t: torch.Tensor) -> torch.Tensor:
     ensure_warp_available()
-    if device is None:
-        device = vertices_t.device
+    device = vertices_t.device
+    device_wp = wp.device_from_torch(device)
 
-    npoints_t = vertices_t.offsets().diff()
-    if (npoints_t < NUM_SLAB_DIRS * 2).any():
-        raise ValueError(f"Each batch must have at least {NUM_SLAB_DIRS * 2} vertices.")
+    #npoints_t = vertices_t.offsets().diff()
+    # if (npoints_t < NUM_SLAB_DIRS * 2).any():
+    #     raise ValueError(f"Each batch must have at least {NUM_SLAB_DIRS * 2} vertices.")
 
     slab_dirs_t = SLAB_DIRS.to(dtype=vertices_t.dtype, device=device)#.unsqueeze(1)
 
@@ -387,23 +351,25 @@ def obb_estimate_dito(vertices_t: torch.Tensor,
     min_vert_t = vertices_t.values()[min_proj_arg_t]
     max_vert_t = vertices_t.values()[max_proj_arg_t]
 
-    many_vertices_mask_t = npoints_t > NUM_SLAB_DIRS * 2
-    few_vertices_mask_t = ~many_vertices_mask_t
+    #many_vertices_mask_t = npoints_t > NUM_SLAB_DIRS * 2
+    #few_vertices_mask_t = ~many_vertices_mask_t
 
     # use just the selected extreme points for large point clouds and fall back to 
     # all input vertices for small point clouds
-    selected_vertices_t = torch.empty(vertices_t.shape[0], NUM_SLAB_DIRS * 2, 3, 
-                                      device=device, dtype=vertices_t.dtype)
-    selected_vertices_t[many_vertices_mask_t] = torch.cat((min_vert_t[many_vertices_mask_t], max_vert_t[many_vertices_mask_t]), dim=1)
-    batch_mask = few_vertices_mask_t.repeat_interleave(vertices_t.offsets().diff())
-    selected_vertices_t[few_vertices_mask_t] = vertices_t.values()[batch_mask].reshape(-1, NUM_SLAB_DIRS * 2, 3)
+    # selected_vertices_t = torch.empty(vertices_t.shape[0], NUM_SLAB_DIRS * 2, 3, 
+    #                                   device=device, dtype=vertices_t.dtype)
+    # #selected_vertices_t[many_vertices_mask_t] = torch.cat((min_vert_t[many_vertices_mask_t], max_vert_t[many_vertices_mask_t]), dim=1)
+    selected_vertices_t = torch.cat((min_vert_t, max_vert_t), dim=1)
 
+    # batch_mask = few_vertices_mask_t.repeat_interleave(vertices_t.offsets().diff())
+    # print("batch mask", batch_mask)
+    # selected_vertices_t[few_vertices_mask_t] = vertices_t.values()[batch_mask].reshape(-1, NUM_SLAB_DIRS * 2, 3)
+    #print("selected vertices", selected_vertices_t[1])
     aabb_min_t = min_proj_t[:, :3]
     aabb_max_t = max_proj_t[:, :3]
 
     aabb_val_t = half_box_area_torch(aabb_max_t - aabb_min_t)
-
-    device_wp = wp.device_from_torch(device)
+    wp.synchronize_device(device_wp)
     aabb_min_wp = wp.from_torch(aabb_min_t, dtype=wp.vec3f).to(device_wp)
     aabb_max_wp = wp.from_torch(aabb_max_t, dtype=wp.vec3f).to(device_wp)
     min_vert_wp = wp.from_torch(min_vert_t, dtype=wp.vec3f).to(device_wp)
@@ -417,20 +383,22 @@ def obb_estimate_dito(vertices_t: torch.Tensor,
                             selected_vertices_wp, basis_wp], 
                     block_dim=BLOCK_SIZE,
                     device=device_wp)
+    wp.synchronize_device(device_wp)
     basis_t = wp.to_torch(basis_wp)
-    min_extents_t, max_extents_t = compute_obb_extents_jagged(vertices_t, basis_t)
-    extents_t = max_extents_t - min_extents_t
-    half_box_area_t = half_box_area_torch(extents_t)
+    # project the vertices from world into local space
+    min_extents_t, max_extents_t = compute_obb_extents_jagged(vertices_t, basis_t.mT)
+    half_extents_t = (max_extents_t - min_extents_t) * 0.5 # half extents
+    half_box_area_t = half_box_area_torch(half_extents_t)
     half_box_area_mask_t = half_box_area_t >= aabb_val_t
-
     basis_t[half_box_area_mask_t] = torch.eye(3, device=device)
     min_extents_t[half_box_area_mask_t] = aabb_min_t[half_box_area_mask_t]
     max_extents_t[half_box_area_mask_t] = aabb_max_t[half_box_area_mask_t]
-    extents_t = max_extents_t - min_extents_t
+    half_extents_t = (max_extents_t - min_extents_t) * 0.5 # half extents
 
     center_local_t = (min_extents_t + max_extents_t) * 0.5
+    # project the center from local into world space
     center_t = torch.bmm(center_local_t.unsqueeze(1), basis_t).squeeze(1)
-    vertices_t = compute_obb_vertices(center_t, extents_t, basis_t.mT)
-    return vertices_t, basis_t
+    obbs_t = torch.cat([basis_t, center_t.unsqueeze(1), half_extents_t.unsqueeze(1)], dim=1)
+    return obbs_t
 
 
